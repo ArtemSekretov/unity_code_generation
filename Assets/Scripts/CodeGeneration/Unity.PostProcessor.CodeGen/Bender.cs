@@ -48,7 +48,6 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen
                     TypeAttributes.BeforeFieldInit | TypeAttributes.Class | TypeAttributes.AnsiClass | TypeAttributes.Public | TypeAttributes.AutoClass | TypeAttributes.Abstract | TypeAttributes.Sealed,
                     assembly.Import<object>());
                 
-                
                 modified |= SerializationProcessor.Process(assembly, _logger, _generatedCodeClass, typeDefinitions, ref bendingFailed);
                 modified |= VisitorProcessor.Process(assembly, _logger, _generatedCodeClass, typeDefinitions, ref bendingFailed);
                 modified |= SimpleProfilerProcessor.Process(assembly, _logger, _generatedCodeClass, typeDefinitions, ref bendingFailed);

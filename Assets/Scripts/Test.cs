@@ -119,7 +119,7 @@ public class Test : MonoBehaviour
         
         return r;
     }
-    
+
     [Profile]
     void Start()
     {
@@ -136,6 +136,8 @@ public class Test : MonoBehaviour
         
         Visitor v = new Visitor();
         VisitorCall<TestStruct1>.Visit(v, ref r);
+        
+        Debug.LogError($"r.Field9 {r.Field9}");
         
         TestStruct11 tt11 = new TestStruct11();
         tt11.Set("Hello");

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -13,23 +12,16 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
     
     // using DefaultAssemblyResolver with ILPostProcessor throws Exceptions 
     // if tried to resolve any type or method, that located outside currently loaded assembly
-    
     public class ILPostProcessorAssemblyResolver : IAssemblyResolver
     {
         private readonly string[] _assemblyReferences;
 
-        // originally we used Dictionary + lock.
-        // Resolve() is called thousands of times for large projects.
-        // ILPostProcessor is multithreaded, so best to use ConcurrentDictionary without the lock here.
-        private readonly ConcurrentDictionary<string, AssemblyDefinition> _assemblyCache =
-            new ConcurrentDictionary<string, AssemblyDefinition>();
-
-        // Resolve() calls FindFile() every time.
-        // thousands of times for String => mscorlib alone in large projects.
-        // cache the results! ILPostProcessor is multithreaded, so use a ConcurrentDictionary here.
-        private readonly ConcurrentDictionary<string, string> _fileNameCache =
-            new ConcurrentDictionary<string, string>();
-
+        private readonly Dictionary<string, AssemblyDefinition> _assemblyCache =
+            new Dictionary<string, AssemblyDefinition>();
+        
+        private readonly Dictionary<string, string> _fileNameCache =
+            new Dictionary<string, string>();
+        
         private readonly ICompiledAssembly _compiledAssembly;
         private AssemblyDefinition _selfAssembly;
 
@@ -58,8 +50,7 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
             return Resolve(name, new ReaderParameters(ReadingMode.Deferred));
         }
 
-        // for large projects, this is called thousands of times for mscorlib alone.
-        // initially ILPostProcessorAssemblyResolver took 30x longer than with CompilationFinishedHook.
+        // for large projects, this is called thousands of times.
         // we need to cache and speed up everything we can here!
         public AssemblyDefinition Resolve(AssemblyNameReference name, ReaderParameters parameters)
         {
@@ -67,10 +58,6 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
                 return _selfAssembly;
 
             // cache FindFile.
-            // in large projects, this is called thousands(!) of times for String=>mscorlib alone.
-            // reduces a single String=>mscorlib resolve from 0.771ms to 0.015ms.
-            // => 50x improvement in TypeReference.Resolve() speed!
-            // => 22x improvement in Weaver speed!
             if (!_fileNameCache.TryGetValue(name.Name, out string fileName))
             {
                 fileName = FindFile(name.Name);
@@ -84,7 +71,7 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
                 // NOTE: if this fails for "System.Private.CoreLib":
                 //       ILPostProcessorReflectionImporter fixes it!
 
-                // the fix for #2503 started showing this warning for Bee.BeeDriver on mac,
+                // warning for Bee.BeeDriver on mac,
                 // which is for compilation. we can ignore that one.
                 if (!name.Name.StartsWith("Bee.BeeDriver"))
                 {
@@ -118,7 +105,6 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
         private string FindFile(string name)
         {
             // perhaps the type comes from a .dll or .exe
-            // check both in one call without Linq instead of iterating twice like originally
             foreach (string r in _assemblyReferences)
             {
                 if (Path.GetFileNameWithoutExtension(r) == name)
@@ -127,8 +113,6 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
                 }
             }
 
-            // this is called thousands(!) of times.
-            // constructing strings only once saves ~0.1ms per call for mscorlib.
             string dllName = name + ".dll";
 
             // Unfortunately the current ICompiledAssembly API only provides direct references.

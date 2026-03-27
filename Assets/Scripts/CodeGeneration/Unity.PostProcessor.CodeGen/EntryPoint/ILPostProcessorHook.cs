@@ -69,14 +69,13 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
                     };
                     using (AssemblyDefinition asmDef = AssemblyDefinition.ReadAssembly(stream, readerParameters))
                     {
-                        // resolving a dll type  while
-                        // weaving dll does not work. it throws a
+                        // resolving a dll type while
+                        // changing dll does not work. it throws a
                         // NullReferenceException 
                         // when Resolve() is called on the type.
                         // need to add the AssemblyDefinition itself to use.
                         asmResolver.SetAssemblyDefinitionForCompiledAssembly(asmDef);
 
-                        // weave this assembly.
                         var bender = new Bender(_log);
                         if (bender.Bend(asmDef, asmResolver, out bool modified))
                         {
@@ -85,6 +84,8 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
                             // write if modified
                             if (modified)
                             {
+                                // we used ImportReference for all type and can create reference to itself 
+                                // this will case exception so we manually remove this references;
                                 for (int i = asmDef.MainModule.AssemblyReferences.Count - 1; i >= 0; i--)
                                 {
                                     var asmRef = asmDef.MainModule.AssemblyReferences[i];
@@ -114,7 +115,7 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
             }
 
             // always return an ILPostProcessResult with Logs.
-            // otherwise we won't see Logs if weaving failed.
+            // otherwise we won't see Logs if we failed.
             return new ILPostProcessResult(compiledAssembly.InMemoryAssembly, _log.Logs);
         }
     }
