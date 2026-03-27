@@ -1,0 +1,20 @@
+{
+    "name": "Unity.PostProcessor.CodeGen",
+    "rootNamespace": "",
+    "references": [
+        "GUID:722aefebf412b2ce4bf84f868f62e28e"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Mono.Cecil.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
