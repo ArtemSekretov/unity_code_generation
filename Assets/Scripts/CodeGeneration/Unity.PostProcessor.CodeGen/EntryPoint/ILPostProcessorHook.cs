@@ -44,14 +44,16 @@ namespace CodeGeneration.Unity.PostProcessor.CodeGen.EntryPoint
             bool ignore = HasDefine(compiledAssembly, IgnoreDefine);
             return !ignore;
         }
-
+        
         public override ILPostProcessResult Process(ICompiledAssembly compiledAssembly)
         {
             //_log.LogWarning("ILProcessor", $"ILPostProcess {compiledAssembly.Name}");
 
             // load the InMemoryAssembly peData into a MemoryStream
             byte[] peData = compiledAssembly.InMemoryAssembly.PeData;
-            using (MemoryStream stream = new MemoryStream(peData))
+            using (MemoryStream stream = new MemoryStream(peData)) 
+                // using DefaultAssemblyResolver with ILPostProcessor throws Exceptions
+                // if tried to resolve any type or method, that located outside currently loaded assembly
             using (ILPostProcessorAssemblyResolver asmResolver = new ILPostProcessorAssemblyResolver(compiledAssembly, _log))
             {
                 // we need to load symbols. otherwise we get:
