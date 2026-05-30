@@ -2,42 +2,48 @@ using System.Collections.Generic;
 using CodeGeneration.Runtime.Visitor;
 using UnityEngine;
 
-    [Visitor]
-    public class TestStruct1
+namespace CodeGenerationTestNamespace
+{
+    public partial class Wrapper
     {
-        public byte Field1;
-
-        public sbyte Field2;
-
-        public ushort Field3;
-
-        public short Field4;
-
-        public uint Field5;
-
-        public int Field6;
-
-        public ulong Field7;
-
-        public long Field8;
-
-        public float Field9;
-
-        private string Field10;
-
-        public int[] Field11;
-
-        public Vector3 Field12;
-
-        public Vector3[] Field13;
-
-        public List<Vector3> Field14;
-
-        public void Set(string s)
+        [Visitor]
+        public partial struct TestStruct1
         {
-            Field10 = s;
+            public byte Field1;
+
+            public sbyte Field2;
+
+            public ushort Field3;
+
+            public short Field4;
+
+            public uint Field5;
+
+            public int Field6;
+
+            public ulong Field7;
+
+            public long Field8;
+
+            public float Field9;
+
+            private string Field10;
+
+            public int[] Field11;
+
+            public Vector3 Field12;
+
+            public Vector3[] Field13;
+
+            public List<Vector3> Field14;
+
+            public void Set(string s)
+            {
+                Field10 = s;
+            }
         }
     }
+}
 
 public class RoslynCodeGenerationTest : MonoBehaviour
 {
@@ -77,7 +83,7 @@ public class RoslynCodeGenerationTest : MonoBehaviour
     
     void Start()
     {
-        TestStruct1 r = new TestStruct1();
+        CodeGenerationTestNamespace.Wrapper.TestStruct1 r = new CodeGenerationTestNamespace.Wrapper.TestStruct1();
         r.Field9 = 1.0f;
         r.Set( "Hello");
         //r.Field10 = "Hello";
@@ -86,7 +92,7 @@ public class RoslynCodeGenerationTest : MonoBehaviour
         r.Field14 = new List<Vector3>();
         
         Visitor v = new Visitor();
-        VisitorCall<TestStruct1>.Visit(v, ref r);
+        VisitorCall<CodeGenerationTestNamespace.Wrapper.TestStruct1>.Visit(v, ref r);
         
         
         Debug.LogError($"r.Field9 {r.Field9}");

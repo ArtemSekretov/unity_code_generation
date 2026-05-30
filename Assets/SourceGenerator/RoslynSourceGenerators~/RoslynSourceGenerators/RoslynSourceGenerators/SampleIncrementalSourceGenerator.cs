@@ -9,114 +9,54 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
-/// <summary>
-/// A sample source generator that creates a custom report based on class properties. The target class should be annotated with the 'Generators.ReportAttribute' attribute.
-/// When using the source code as a baseline, an incremental source generator is preferable because it reduces the performance overhead.
-/// </summary>
 [Generator]
 public class SampleIncrementalSourceGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // Filter classes annotated with the [Report] attribute. Only filtered Syntax Nodes can trigger code generation.
         var provider = context.SyntaxProvider
             .CreateSyntaxProvider(
-                (s, _) => s is ClassDeclarationSyntax,
-                (ctx, _) => GetClassDeclarationForSourceGen(ctx))
+                (s, _) => s is TypeDeclarationSyntax,
+                (ctx, _) => GetTypeDeclarationForSourceGen(ctx))
             .Where(t => t.reportAttributeFound)
             .Select((t, _) => t.Item1);
 
-        // Generate the source code.
-        //context.RegisterSourceOutput(provider, GenerateCode);
-        
-        // Generate the source code.
-        context.RegisterSourceOutput(context.CompilationProvider.Combine(provider.Collect()),
-            ((ctx, t) => GenerateCode(ctx, t.Left, t.Right)));
+        context.RegisterSourceOutput(provider.Collect(), GenerateCode);
     }
 
-    /// <summary>
-    /// Checks whether the Node is annotated with the [Visitor] attribute and maps syntax context to the specific node type (ClassDeclarationSyntax).
-    /// </summary>
-    /// <param name="context">Syntax context, based on CreateSyntaxProvider predicate</param>
-    /// <returns>The specific cast and whether the attribute was found.</returns>
-    private static (ClassDeclarationSyntax, bool reportAttributeFound) GetClassDeclarationForSourceGen(
+    private static (TypeDeclarationSyntax, bool reportAttributeFound) GetTypeDeclarationForSourceGen(
         GeneratorSyntaxContext context)
     {
-        var classDeclarationSyntax = (ClassDeclarationSyntax)context.Node;
-        
-        // Go through all attributes of the class.
-        foreach (AttributeListSyntax attributeListSyntax in classDeclarationSyntax.AttributeLists)
+        var typeDeclarationSyntax = (TypeDeclarationSyntax)context.Node;
+
+        if (typeDeclarationSyntax is ClassDeclarationSyntax or StructDeclarationSyntax)
         {
-            foreach (AttributeSyntax attributeSyntax in attributeListSyntax.Attributes)
+            if (typeDeclarationSyntax.Modifiers.Any(SyntaxKind.PartialKeyword))
             {
-                if (ModelExtensions.GetSymbolInfo(context.SemanticModel, attributeSyntax).Symbol is not IMethodSymbol
-                    attributeSymbol)
-                    continue; // if we can't get the symbol, ignore it
+                // Go through all attributes of the class.
+                foreach (AttributeListSyntax attributeListSyntax in typeDeclarationSyntax.AttributeLists)
+                {
+                    foreach (AttributeSyntax attributeSyntax in attributeListSyntax.Attributes)
+                    {
+                        if (ModelExtensions.GetSymbolInfo(context.SemanticModel, attributeSyntax).Symbol is not
+                            IMethodSymbol
+                            attributeSymbol)
+                            continue; // if we can't get the symbol, ignore it
 
-                string attributeName = attributeSymbol.ContainingType.ToDisplayString();
+                        string attributeName = attributeSymbol.ContainingType.ToDisplayString();
 
-                if (attributeName == "CodeGeneration.Runtime.Visitor.VisitorAttribute")
-                    return (classDeclarationSyntax, true);
+                        if (attributeName == "CodeGeneration.Runtime.Visitor.VisitorAttribute")
+                            return (typeDeclarationSyntax, true);
+                    }
+                }
             }
         }
 
-        return (classDeclarationSyntax, false);
+        return (typeDeclarationSyntax, false);
     }
 
-        /// <summary>
-    /// Generate code action.
-    /// It will be executed on specific nodes (ClassDeclarationSyntax annotated with the [Report] attribute) changed by the user.
-    /// </summary>
-    /// <param name="context">Source generation context used to add source files.</param>
-    /// <param name="compilation">Compilation used to provide access to the Semantic Model.</param>
-    /// <param name="classDeclarations">Nodes annotated with the [Report] attribute that trigger the generate action.</param>
-    private void GenerateCode(SourceProductionContext context, Compilation compilation,
-        ImmutableArray<ClassDeclarationSyntax> classDeclarations)
+    private void GenerateCode(SourceProductionContext context, ImmutableArray<TypeDeclarationSyntax> typeDeclarations)
     {
-        /*
-        // Go through all filtered class declarations.
-        foreach (var classDeclarationSyntax in classDeclarations)
-        {
-            // We need to get semantic model of the class to retrieve metadata.
-            var semanticModel = compilation.GetSemanticModel(classDeclarationSyntax.SyntaxTree);
-
-            // Symbols allow us to get the compile-time information.
-            if (semanticModel.GetDeclaredSymbol(classDeclarationSyntax) is not INamedTypeSymbol classSymbol)
-                continue;
-
-            var namespaceName = classSymbol.ContainingNamespace.ToDisplayString();
-
-            // 'Identifier' means the token of the node. Get class name from the syntax node.
-            var className = classDeclarationSyntax.Identifier.Text;
-
-            // Go through all class members with a particular type (property) to generate method lines.
-            var methodBody = classSymbol.GetMembers()
-                .OfType<IPropertySymbol>()
-                .Select(p =>
-                    $@"        yield return $""{p.Name}:{{this.{p.Name}}}"";"); // e.g. yield return $"Id:{this.Id}";
-
-            // Build up the source code
-            var code = $@"// <auto-generated/>
-
-using System;
-using System.Collections.Generic;
-
-namespace {namespaceName};
-
-partial class {className}
-{{
-    public IEnumerable<string> Report()
-    {{
-{string.Join("\n", methodBody)}
-    }}
-}}
-";
-
-            // Add the source code to the compilation.
-            context.AddSource($"{className}.g.cs", SourceText.From(code, Encoding.UTF8));
-        }
-        */
-        
         // Go through all filtered class declarations.
         MemoryStream sourceStream = new();
         StreamWriter sourceStreamWriter = new(sourceStream, Encoding.UTF8);
@@ -128,7 +68,7 @@ partial class {className}
         codeWriter.WriteLine('{');
         codeWriter.Indent++;
 
-        codeWriter.WriteLine("static class GeneratedCode");
+        codeWriter.WriteLine("public static class GeneratedCode");
         codeWriter.WriteLine('{');
         codeWriter.Indent++;
 
@@ -137,106 +77,179 @@ partial class {className}
         
         codeWriter.WriteLine('{');
         codeWriter.Indent++;
-        foreach (var classDeclarationSyntax in classDeclarations)
+        foreach (var typeDeclarationSyntax in typeDeclarations)
         {
             codeWriter.Write("global::CodeGeneration.Runtime.Visitor.VisitorCall<");
-            codeWriter.AppendFullTypeName(classDeclarationSyntax);
-            codeWriter.Write(">.Visit = Visit_");
-            codeWriter.Write(classDeclarationSyntax.Identifier.Text);
+            codeWriter.AppendFullTypeName(typeDeclarationSyntax);
+            codeWriter.Write(">.Visit = ");
+            codeWriter.AppendFullTypeName(typeDeclarationSyntax);
+            codeWriter.Write(".Visit");
             codeWriter.WriteLine(";");
         }        
         codeWriter.Indent--;
         codeWriter.WriteLine('}');
-
-        foreach (var classDeclarationSyntax in classDeclarations)
-        {
-            // method for each class
-            codeWriter.Write("public static void Visit_");
-            codeWriter.Write(classDeclarationSyntax.Identifier.Text);
-            codeWriter.Write("(global::CodeGeneration.Runtime.Visitor.IVisitor visitor, ref ");
-            codeWriter.AppendFullTypeName(classDeclarationSyntax);
-            codeWriter.WriteLine(" container)");
-            codeWriter.WriteLine('{');
-            codeWriter.Indent++;
-            codeWriter.WriteLine("Debug.Log(\" Visitor \");");
-            // Close method for each class.
-            codeWriter.Indent--;
-            codeWriter.WriteLine('}');
-        }
-
+        
         // Close the class.
         codeWriter.Indent--;
         codeWriter.WriteLine('}');
-
+        
         // Close the namespace.
         codeWriter.Indent--;
         codeWriter.WriteLine('}');
+        
+        foreach (var typeDeclarationSyntax in typeDeclarations)
+        {
+            var parentInfos = GetFullTypeName(typeDeclarationSyntax);
+
+            foreach (var parentInfo in parentInfos)
+            {
+                switch (parentInfo.Type)
+                {
+                    case ParentType.Namespace:
+                        codeWriter.Write("namespace ");
+                        break;
+                    case ParentType.Class:
+                        codeWriter.Write("public partial class ");
+                        break;
+                    case ParentType.Struct:
+                        codeWriter.Write("public partial struct ");
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+                codeWriter.WriteLine(parentInfo.Name);
+                codeWriter.WriteLine('{');
+                codeWriter.Indent++;                
+            }
+            
+            codeWriter.Write("public partial ");
+
+            switch (typeDeclarationSyntax)
+            {
+                case StructDeclarationSyntax:
+                    codeWriter.Write("struct ");
+                    break;
+                case ClassDeclarationSyntax:
+                    codeWriter.Write("class ");
+                    break;
+            }
+            
+            codeWriter.WriteLine(typeDeclarationSyntax.Identifier.Text);
+            codeWriter.WriteLine('{');
+            codeWriter.Indent++;
+            
+            codeWriter.Write("public static void Visit");
+            codeWriter.Write("(global::CodeGeneration.Runtime.Visitor.IVisitor visitor, ref ");
+            codeWriter.AppendFullTypeName(typeDeclarationSyntax);
+            codeWriter.WriteLine(" container)");
+            codeWriter.WriteLine('{');
+            codeWriter.Indent++;
+            
+            foreach (var member in typeDeclarationSyntax.Members)
+            {
+                if (member is FieldDeclarationSyntax fieldDeclarationSyntax)
+                {
+                    foreach (var declarationVariable in fieldDeclarationSyntax.Declaration.Variables)
+                    {
+                        codeWriter.Write("visitor.Visit(\"");
+                        codeWriter.Write(declarationVariable.Identifier.Text);
+                        codeWriter.Write("\", ref container.");
+                        codeWriter.Write(declarationVariable.Identifier.Text);
+                        codeWriter.WriteLine(");");
+                    }
+                }
+                else if (member is PropertyDeclarationSyntax propertyDeclarationSyntax)
+                {
+                    codeWriter.Write("visitor.Visit(\"");
+                    codeWriter.Write(propertyDeclarationSyntax.Identifier.Text);
+                    codeWriter.Write("\", ref container.");
+                    codeWriter.Write(propertyDeclarationSyntax.Identifier.Text);
+                    codeWriter.WriteLine(");");
+                }
+            }
+            
+            codeWriter.Indent--;
+            codeWriter.WriteLine('}');
+            
+            codeWriter.Indent--;
+            codeWriter.WriteLine('}');
+
+            for (var i = 0; i < parentInfos.Length; i++)
+            {
+                codeWriter.Indent--;
+                codeWriter.WriteLine('}');
+            }
+        }
+        
         sourceStreamWriter.Flush();
         
         // Add the source code to the compilation.
         context.AddSource("Visitor.g.cs", SourceText.From(sourceStream, Encoding.UTF8, canBeEmbedded: true));
     }
-    
-    /// <summary>
-    /// Generate code action.
-    /// It will be executed on specific nodes (ClassDeclarationSyntax annotated with the [Report] attribute) changed by the user.
-    /// </summary>
-    /// <param name="context">Source generation context used to add source files.</param>
-    /// <param name="compilation">Compilation used to provide access to the Semantic Model.</param>
-    /// <param name="classDeclarations">Nodes annotated with the [Report] attribute that trigger the generate action.</param>
-    private void GenerateCode(SourceProductionContext context, ClassDeclarationSyntax classDeclarationSyntax)
+
+    public enum ParentType
     {
-        // Go through all filtered class declarations.
-        MemoryStream sourceStream = new();
-        StreamWriter sourceStreamWriter = new(sourceStream, Encoding.UTF8);
-        IndentedTextWriter codeWriter = new (sourceStreamWriter);
-        codeWriter.WriteLine("// <auto-generated/>");
-        codeWriter.WriteLine("namespace CodeGeneration");
-        codeWriter.WriteLine('{');
-        codeWriter.Indent++;
+        None,
+        Namespace,
+        Class,
+        Struct,
+    }
+    
+    private struct ParentInfo
+    {
+        public string Name;
+        public ParentType Type;
+    }
+    
+    private ParentInfo[] GetFullTypeName(TypeDeclarationSyntax classDeclarationSyntax)
+    {
+        var ancestorCount = 0;
+        var parent = classDeclarationSyntax.Parent;
+        while (parent is BaseNamespaceDeclarationSyntax or BaseTypeDeclarationSyntax)
+        {
+            ancestorCount++;
+            parent = parent.Parent;
+        }
+        parent = classDeclarationSyntax.Parent;
+        
+        var infos = new ParentInfo[ancestorCount];
+        var currentAncestor = ancestorCount - 1;
+        while (parent is BaseNamespaceDeclarationSyntax or BaseTypeDeclarationSyntax)
+        {
+            ref var info = ref infos[currentAncestor]; 
+            
+            switch (parent)
+            {
+                case BaseTypeDeclarationSyntax parentClass:
+                    info.Name = parentClass.Identifier.Text;
 
-        codeWriter.WriteLine("static class GeneratedCode");
-        codeWriter.WriteLine('{');
-        codeWriter.Indent++;
+                    if (parentClass is ClassDeclarationSyntax)
+                    {
+                        info.Type = ParentType.Class;
+                    }
+                    else if (parentClass is StructDeclarationSyntax)
+                    {
+                        info.Type = ParentType.Struct;
+                    }
+                    
+                    break;
+                case BaseNamespaceDeclarationSyntax parentNamespace:
+                    info.Name = parentNamespace.Name.ToString();
+                    info.Type = ParentType.Namespace;
+                    break;
+            }
 
-        codeWriter.WriteLine("[RuntimeInitializeOnLoad]");
-        codeWriter.WriteLine("public static void InitVisitors()");
+            currentAncestor--;
+            parent = parent.Parent;
+        }
         
-        codeWriter.WriteLine('{');
-        codeWriter.Indent++;
-        
-        codeWriter.Indent--;
-        codeWriter.WriteLine('}');
-        
-        // method for each class
-        codeWriter.Write("public static void Visit_");
-        codeWriter.AppendFullTypeName(classDeclarationSyntax);
-        codeWriter.Write("(IVisitor visitor, ref ");
-        codeWriter.AppendFullTypeName(classDeclarationSyntax);
-        codeWriter.WriteLine(" container)");
-        codeWriter.WriteLine('{');
-        codeWriter.Indent++;
-        
-        codeWriter.Indent--;
-        codeWriter.WriteLine('}');
-        
-        // Close the class.
-        codeWriter.Indent--;
-        codeWriter.WriteLine('}');
-
-        // Close the namespace.
-        codeWriter.Indent--;
-        codeWriter.WriteLine('}');
-        sourceStreamWriter.Flush();
-        
-        // Add the source code to the compilation.
-        context.AddSource("Visitor.g.cs", SourceText.From(sourceStream, Encoding.UTF8, canBeEmbedded: true));
+        return infos;
     }
 }
 
 static class CodeWriterExtensions
 {
-    public static void AppendFullTypeName(this TextWriter codeWriter, ClassDeclarationSyntax classDeclarationSyntax)
+    public static void AppendFullTypeName(this TextWriter codeWriter, TypeDeclarationSyntax classDeclarationSyntax)
     {
         var ancestorCount = 0;
         var parent = classDeclarationSyntax.Parent;
